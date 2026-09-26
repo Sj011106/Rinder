@@ -28,10 +28,10 @@ def extract_preferred_area(description):
             return area
     return None
 
-def get_recommended_listings(user_id, budget_flexibility=150, top_n=20):
-    """Recommends listings for a user, ranked so that listings matching BOTH their
-    budget and their extracted preferred area appear first, followed by remaining
-    budget-matched listings - both groups sorted by closeness to their exact budget."""
+def get_recommended_listings(user_id, top_n=100):
+    """Ranks ALL listings for a user - closest-budget + preferred-area matches first,
+    then everything else sorted by closeness to their budget. Nothing is excluded,
+    just ordered so the best fits appear first."""
 
     user_doc = db.collection("users").document(user_id).get()
     if not user_doc.exists:
@@ -46,25 +46,20 @@ def get_recommended_listings(user_id, budget_flexibility=150, top_n=20):
 
     all_listings = [doc.to_dict() for doc in db.collection("house").stream()]
 
-    # Always filter by budget, with some flexibility above/below the stated number
-    min_rent = budget - budget_flexibility
-    max_rent = budget + budget_flexibility
-    candidates = [l for l in all_listings if min_rent <= l.get("rent", 0) <= max_rent]
-
-    # Tag each listing with whether it matches the preferred area, and how far its
-    # rent is from the user's exact budget
-    for l in candidates:
+    # Tag every listing (no filtering out) with area match + distance from budget
+    for l in all_listings:
         l["_matches_area"] = bool(
             preferred_area and preferred_area.lower() in l.get("neighborhood", "").lower()
         )
         l["_rent_distance"] = abs(l.get("rent", 0) - budget)
 
-    # Sort so area-matching listings come first (as a group), then everyone else -
+    # Area-matching listings first (as a group), then everyone else -
     # each group internally sorted by closeness to the exact budget
-    candidates.sort(key=lambda l: (not l["_matches_area"], l["_rent_distance"]))
+    all_listings.sort(key=lambda l: (not l["_matches_area"], l["_rent_distance"]))
 
     trimmed = [
         {
+            "id": l.get("id"),
             "title": l.get("title"),
             "neighborhood": l.get("neighborhood"),
             "rent": l.get("rent"),
@@ -72,7 +67,7 @@ def get_recommended_listings(user_id, budget_flexibility=150, top_n=20):
             "property_type": l.get("property_type"),
             "matches_preferred_area": l["_matches_area"],
         }
-        for l in candidates[:top_n]
+        for l in all_listings[:top_n]
     ]
 
     return {
@@ -82,12 +77,10 @@ def get_recommended_listings(user_id, budget_flexibility=150, top_n=20):
         "count": len(trimmed),
         "recommended_listings": trimmed,
     }
-
 # --- Quick test ---
 if __name__ == "__main__":
-    print("Recommendations for U001:")
+    print("All ranked listings for U001:")
     result = get_recommended_listings("U001")
-    print(f"Budget: {result['budget']}, preferred area: {result['preferred_area']}, found: {result['count']}")
+    print(f"Budget: {result['budget']}, preferred area: {result['preferred_area']}, total: {result['count']}")
     for l in result["recommended_listings"][:10]:
         print(l)
-
