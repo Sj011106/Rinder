@@ -18,15 +18,15 @@ def compatibility_score(user_a, user_b):
     budget_score = max(0, 100 - budget_diff / 10)
 
     # 2. Noise level closeness (20%)
-    noise_diff = abs(LEVEL_MAP[user_a["noise_level"]] - LEVEL_MAP[user_b["noise_level"]])
+    noise_diff = abs(LEVEL_MAP.get(user_a["noise_level"], 1) - LEVEL_MAP.get(user_b["noise_level"], 1))
     noise_score = max(0, 100 - noise_diff * 50)
 
     # 3. Cleanliness closeness (15%)
-    clean_diff = abs(LEVEL_MAP[user_a["cleanliness"]] - LEVEL_MAP[user_b["cleanliness"]])
+    clean_diff = abs(LEVEL_MAP.get(user_a["cleanliness"], 1) - LEVEL_MAP.get(user_b["cleanliness"], 1))
     clean_score = max(0, 100 - clean_diff * 50)
 
     # 4. Sleep schedule closeness (15%)
-    sleep_diff = abs(SLEEP_MAP[user_a["sleep_schedule"]] - SLEEP_MAP[user_b["sleep_schedule"]])
+    sleep_diff = abs(SLEEP_MAP.get(user_a["sleep_schedule"], 1) - SLEEP_MAP.get(user_b["sleep_schedule"], 1))
     sleep_score = max(0, 100 - sleep_diff * 50)
 
     # 5. Age closeness (10%)
@@ -55,10 +55,10 @@ def get_all_users():
     return [doc.to_dict() for doc in db.collection("users").stream()]
 
 
-def get_suggested_roommates(user_id, top_n=100):
+def get_suggested_roommates(user_id, top_n=None):
     """Given a user_id, scores them against every other user and returns the
-    top_n best matches, sorted highest first - this is the actual response
-    your friend's swipe screen will consume."""
+    top_n best matches, sorted highest first. If top_n is None, returns everyone -
+    this is the actual response your friend's swipe screen will consume."""
     all_users = get_all_users()
     user = next((u for u in all_users if u["id"] == user_id), None)
 
@@ -78,6 +78,9 @@ def get_suggested_roommates(user_id, top_n=100):
             "program": candidate["program"],
             "picture": candidate.get("picture"),
         })
+
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return {"user_id": user_id, "suggested_roommates": scored if top_n is None else scored[:top_n]}
 
     scored.sort(key=lambda x: x["score"], reverse=True)
     return {"user_id": user_id, "suggested_roommates": scored[:top_n]}
